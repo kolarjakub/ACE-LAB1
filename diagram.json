@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "author": "Jakub Kolář",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-pi-pico", "id": "pico", "top": -60.75, "left": 3.6, "attrs": {} },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": -32.2,
+      "left": -182.4,
+      "attrs": { "color": "green", "xray": "1", "key": "o" }
+    },
+    { "type": "wokwi-mpu6050", "id": "imu1", "top": 138.22, "left": 136.72, "attrs": {} },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": 15.8,
+      "left": -182.4,
+      "attrs": { "color": "blue", "xray": "1", "key": "n" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn3",
+      "top": 63.8,
+      "left": -182.4,
+      "attrs": { "color": "yellow", "xray": "1", "key": "e" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -81.6,
+      "left": -115.75,
+      "rotate": 90,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": -81.6,
+      "left": -134.95,
+      "rotate": 90,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": -81.6,
+      "left": -96.55,
+      "rotate": 90,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "board-ssd1306",
+      "id": "oled1",
+      "top": 147.14,
+      "left": 240.23,
+      "attrs": { "i2cAddress": "0x3c" }
+    }
+  ],
+  "connections": [
+    [ "pico:GP0", "$serialMonitor:RX", "", [] ],
+    [ "pico:GP1", "$serialMonitor:TX", "", [] ],
+    [ "btn1:1.r", "r2:2", "green", [ "h9.8", "v-27.6" ] ],
+    [ "btn2:1.r", "r1:2", "blue", [ "h29", "v-85.2" ] ],
+    [ "btn3:1.r", "r3:2", "gold", [ "h48.2", "v-123.6" ] ],
+    [ "btn1:2.r", "btn2:2.r", "black", [ "h9.8", "v48" ] ],
+    [ "btn2:2.r", "btn3:2.r", "black", [ "h9.8", "v48" ] ],
+    [ "pico:GND.4", "btn3:2.r", "black", [ "h0" ] ],
+    [ "pico:GP2", "btn1:1.r", "green", [ "h-57.6", "v-9.6" ] ],
+    [ "pico:GP3", "btn2:1.r", "blue", [ "h-48", "v28.8" ] ],
+    [ "pico:GP4", "btn3:1.r", "gold", [ "h-38.4", "v76.8" ] ],
+    [ "pico:3V3", "r3:1", "red", [ "h39.6", "v-96", "h-182.4" ] ],
+    [ "r3:1", "r2:1", "red", [ "h0" ] ],
+    [ "r1:1", "r3:1", "red", [ "h0", "v-19.2" ] ],
+    [ "pico:GND.5", "oled1:GND", "black", [ "h0" ] ],
+    [ "oled1:VCC", "pico:3V3", "red", [ "h0.15", "v-134.4" ] ],
+    [ "imu1:GND", "pico:GND.5", "black", [ "v-28.8", "h-124.72" ] ],
+    [ "imu1:VCC", "pico:3V3", "red", [ "v0" ] ],
+    [ "pico:GP18", "oled1:SDA", "green", [ "h0" ] ],
+    [ "pico:GP19", "oled1:SCL", "gray", [ "h0" ] ],
+    [ "pico:GP20", "imu1:SDA", "orange", [ "h0" ] ],
+    [ "pico:GP21", "imu1:SCL", "#8f4814", [ "h0" ] ]
+  ],
+  "dependencies": {}
+}

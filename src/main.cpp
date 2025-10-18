@@ -65,14 +65,51 @@ typedef struct {
   unsigned long tes, tis;
 } fsm_t;
 
-fsm_t fsmOLED,fsmSOK,fsmSNEXT,fsmSESC;
+fsm_t fsmOLED,fsmSOK;
 
 // enum of states for OLED
-enum {
+/*enum {
   oled_running,
   oled_menu,
-  oled_calibrate
+  oled_menu_calibrate_IMU,
+  oled_menu_dice_range,
+  oled_menu_dice_counter,
+  oled_menu_dice_spin_time
+};*/
+
+
+enum{
+	running,
+	menu_imu_calibration,
+  calibrating,
+	menu_number_of_dices,
+	menu_number_of_dices_selection,
+	menu_dice_range,
+	menu_dice_range_selection,
+	menu_spin_time,
+	menu_spin_time_selection	
 };
+
+struct dice_range{
+  uint8_t min_value;
+  uint8_t max_value;
+};
+
+const struct dice_range dice_set[4] = {
+    {1, 4},
+    {1, 6},
+    {1, 10},
+    {1, 20}
+};
+uint8_t dice_range_selection = 1; // deafult option is 1-6 - index to array dice_set
+uint8_t tmp_dice_range_selection; // tmp variable for selection in menu
+uint8_t number_of_dices = 1; // deafult option is 1
+uint8_t tmp_number_of_dices; // tmp variable for selection in menu
+
+#define SPIN_TIME_MIN 2
+#define SPIN_TIME_MAX 10
+uint8_t dice_spin_time_sec = SPIN_TIME_MIN; // default 3 seconds
+uint8_t tmp_dice_spin_time_sec; // default 3 seconds
 
 // enum of states for buttons
 enum {
@@ -151,8 +188,6 @@ void setup()
 
   // Configure buttons (use internal pull-ups; buttons -> GND)
   pinMode(SOK_BUTTON, INPUT_PULLUP);
-  pinMode(SNEXT_BUTTON, INPUT_PULLUP);
-  pinMode(SESC_BUTTON, INPUT_PULLUP);
   
   // Initialize stable states
   SOK = (digitalRead(SOK_BUTTON));
@@ -163,10 +198,8 @@ void setup()
   SESCprev = SESC;
 
   // Set state machines to initial states
-  set_state(fsmOLED, oled_running);
+  set_state(fsmOLED, running);
   set_state(fsmSOK, button_off);
-  set_state(fsmSNEXT, button_off);
-  set_state(fsmSESC, button_off);
 }
 
 // Struct to store IMU readings
@@ -218,7 +251,8 @@ void loop()
     SNEXT = !digitalRead(SNEXT_BUTTON);
     SESC = !digitalRead(SESC_BUTTON);
 
-    // SOK button FSM
+
+    // SOK button handiling
     if(fsmSOK.state == button_off) {
       if(SOK == LOW && SOKprev == HIGH) { // Button pressed
         set_state(fsmSOK, button_on);
@@ -229,52 +263,85 @@ void loop()
       }
     }
 
-    // SNEXT button FSM
-    if(fsmSNEXT.state == button_off) {
-      if(SNEXT == LOW && SNEXTprev == HIGH) { // Button pressed
-        set_state(fsmSNEXT, button_on);
-      }
-    } else if(fsmSNEXT.state == button_on) {
-      if(SNEXT == HIGH && SNEXTprev == LOW) { // Button released
-        set_state(fsmSNEXT, button_off);
-      }
-    }
 
-    // SESC button FSM
-    if(fsmSESC.state == button_off) {
-      if(SESC == LOW && SESCprev == HIGH) { // Button pressed
-        set_state(fsmSESC, button_on);
-      }
-    } else if(fsmSESC.state == button_on) {
-      if(SESC == HIGH && SESCprev == LOW) { // Button released
-        set_state(fsmSESC, button_off);
-      }
-    }
-
-    
-
-    
-
-
-
-    // Writing outputs form state machines
+    // State machine for SOK button -> setting states of fsmOLED
     if(fsmSOK.state == button_on && (fsmSOK.tis-fsmSOK.tes>long_press_sec*1000)) {
-      if(fsmOLED.state == oled_running){
-        set_state(fsmOLED, oled_menu);
+      if(fsmOLED.state == running){
+        set_state(fsmOLED, menu_imu_calibration);
       }
     }else if(fsmSOK.state == button_off && fsmSOK.new_state == button_on) {
-      if(fsmOLED.state == oled_menu){
-        // approval of menu option
+      // Approval (short press) handling for all menu states:
+      if (fsmOLED.state == menu_imu_calibration) {
+        // approve IMU calibration (start calibration or confirm)
+        set_state(fsmOLED, calibrating);
+      } else if (fsmOLED.state == menu_number_of_dices) {
+        // enter selection for number of dices
+        tmp_number_of_dices = number_of_dices; // load current value to tmp variable
+        set_state(fsmOLED, menu_number_of_dices_selection);
+      } else if (fsmOLED.state == menu_number_of_dices_selection) {
+        // confirm selected number_of_dices (apply selection)
+        number_of_dices = tmp_number_of_dices;
+        set_state(fsmOLED, menu_number_of_dices);
+      } else if (fsmOLED.state == menu_dice_range) {
+        // enter dice range selection
+        tmp_dice_range_selection = dice_range_selection; // load current value to tmp variable
+        set_state(fsmOLED, menu_dice_range_selection);
+      } else if (fsmOLED.state == menu_dice_range_selection) {
+        // confirm selected dice range (apply selection)
+        dice_range_selection = tmp_dice_range_selection;
+        set_state(fsmOLED, menu_dice_range);
+      } else if (fsmOLED.state == menu_spin_time) {
+        // enter spin time selection
+        tmp_dice_spin_time_sec = dice_spin_time_sec; // load current value to tmp variable
+        set_state(fsmOLED, menu_spin_time_selection);
+      } else if (fsmOLED.state == menu_spin_time_selection) {
+        // confirm selected spin time (apply selection)
+        dice_spin_time_sec = tmp_dice_spin_time_sec;
+        set_state(fsmOLED, menu_spin_time);
       }
     }
 
+    // SNEXT button handling
+    if(SNEXT == LOW && SNEXTprev == HIGH) {
+      // if state is oled_menu change to next option
+      if(fsmOLED.state == menu_imu_calibration){
+        set_state(fsmOLED, menu_number_of_dices);
+      }else if(fsmOLED.state == menu_number_of_dices){
+        set_state(fsmOLED, menu_dice_range);
+      }else if(fsmOLED.state == menu_dice_range){
+        set_state(fsmOLED, menu_spin_time);
+      }else if(fsmOLED.state == menu_spin_time){
+        set_state(fsmOLED, menu_imu_calibration);
+
+      }else if(fsmOLED.state == menu_number_of_dices_selection){
+        tmp_number_of_dices++;
+        if(tmp_number_of_dices>4) tmp_number_of_dices=1; // wrap around
+      }else if(fsmOLED.state == menu_dice_range_selection){
+        tmp_dice_range_selection++;
+        if(tmp_dice_range_selection>3) tmp_dice_range_selection=0; // wrap around
+      }else if(fsmOLED.state == menu_spin_time_selection){
+        tmp_dice_spin_time_sec++;
+        if(tmp_dice_spin_time_sec>SPIN_TIME_MAX) tmp_dice_spin_time_sec=SPIN_TIME_MIN; // max 10 seconds 
+      }
+    }
+  
+
+    // SESC button handling
+    if (SESC == LOW && SESCprev == HIGH) {
+      if (fsmOLED.state == menu_imu_calibration ||
+          fsmOLED.state == menu_number_of_dices ||
+          fsmOLED.state == menu_number_of_dices_selection ||
+          fsmOLED.state == menu_dice_range ||
+          fsmOLED.state == menu_dice_range_selection ||
+          fsmOLED.state == menu_spin_time ||
+          fsmOLED.state == menu_spin_time_selection) {
+        set_state(fsmOLED, running);
+      }
+    }
 
     uint32_t cur_time = millis();   // Just one call to millis()
     fsmSOK.tis = cur_time - fsmSOK.tes;
-    fsmSNEXT.tis = cur_time - fsmSNEXT.tes;
-    fsmSESC.tis = cur_time - fsmSESC.tes;
     fsmOLED.tis = cur_time - fsmOLED.tes;
-
 
 
 
