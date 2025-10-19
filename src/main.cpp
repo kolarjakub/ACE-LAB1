@@ -13,6 +13,9 @@ MPU6500 mpu;
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#include <stdlib.h>   // rand(), srand()
+#include <time.h>     // generation of random values
+
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
@@ -41,9 +44,103 @@ static const unsigned char PROGMEM logo_bmp[] =
   0b01110000, 0b01110000,
   0b00000000, 0b00110000 };
 
+const uint8_t dot_size=1;
+
+void drawDices(uint8_t dice_values[], uint8_t num_dices){
+  if(num_dices >4) num_dices =4; // max 4 dices supported currently
+  if(num_dices <1) num_dices =1;
+  for (size_t i = 0; i < num_dices; i++){  
+    display.drawRoundRect(i*SCREEN_WIDTH/4, 0, (SCREEN_WIDTH/4-1), (SCREEN_WIDTH/4-1), 3, SSD1306_WHITE);
+    switch(dice_values[i]){
+      case 1:
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),(SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        break;
+      case 2:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        break;
+      case 3:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8), (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        break;
+      case 4:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        break;
+      case 5:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8), (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        break;
+      case 6:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        break;
+      case 7:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),(SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        break;
+      case 8:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),(SCREEN_WIDTH/12), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),2*(SCREEN_WIDTH/12), dot_size, SSD1306_WHITE);
+        break;
+      case 9:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),(SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),(SCREEN_WIDTH/4-5), dot_size, SSD1306_WHITE);
+        break;
+      case 10:
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), 5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/8), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + 5, (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/4 -5), (SCREEN_WIDTH/4 -5), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),5, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),2*(SCREEN_WIDTH/20), dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),4*(SCREEN_WIDTH/20)-4, dot_size, SSD1306_WHITE);
+        display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),(SCREEN_WIDTH/4-5), dot_size, SSD1306_WHITE);
+        break;
+      }
+    display.setCursor((2*i+1)*(SCREEN_WIDTH/8)-5,SCREEN_WIDTH/4+3);     // Start at top-left corner
+    display.printf("%d",dice_values[i]);
+  }
+}
+    
+
+
+
 uint32_t interval, last_cycle;
 uint32_t loop_micros;
 uint32_t cycle_count;
+
+
 
 #define SOK_BUTTON 2
 #define SNEXT_BUTTON 3
@@ -70,7 +167,23 @@ typedef struct {
 
 fsm_t fsmOLED,fsmSOK,fsmSERIAL;
 
-// OLED state machine states
+// --- shake FSM and parameters (added) ---
+fsm_t fsmSHAKE;
+
+enum {
+  shake_idle,
+  shake_saw_pos,
+  shake_saw_neg,
+};
+
+const float SHAKE_AXIS_TH = 0.6f;       // threshold [g] for a horizontal peak
+const uint8_t SHAKE_CYCLES_REQ = 3;    // required alternations (>3 cycles means >=3 alternations)
+const uint32_t SHAKE_WINDOW_MS = 800;  // time window to count cycles
+
+int8_t shake_last_dir = 0;    // -1, 0, +1 (keeps last detected direction)
+uint8_t shake_cycle_count = 0; // number of alternations counted
+uint32_t shake_window_start_ms = 0;
+
 enum{
 	running,
   running_spinning,
@@ -99,21 +212,12 @@ enum {
 };
 
 
-struct dice_range{
-  uint8_t min_value;
-  uint8_t max_value;
-};
-
-const struct dice_range dice_set[4] = {
-    {1, 4},
-    {1, 6},
-    {1, 10},
-    {1, 20}
-};
+const uint8_t dice_ranges[4] = {4, 6, 10, 20};
 uint8_t dice_range_selection = 1; // deafult option is 1-6 - index to array dice_set
 uint8_t tmp_dice_range_selection; // tmp variable for selection in menu
 uint8_t number_of_dices = 1; // deafult option is 1
 uint8_t tmp_number_of_dices; // tmp variable for selection in menu
+uint8_t current_dice_values[4] = {0,0,0,0};
 
 #define SPIN_TIME_MIN 2
 #define SPIN_TIME_MAX 10
@@ -137,6 +241,8 @@ void setup()
 {
   // Builtin LED
   pinMode(LED_BUILTIN, OUTPUT);
+  
+  srand(time(NULL));  
 
   Serial.begin(115200);
 
@@ -170,12 +276,26 @@ void setup()
   setting.accel_fchoice = 0x01;
   setting.accel_dlpf_cfg = ACCEL_DLPF_CFG::DLPF_45HZ;
   
+
+
+
+
+
+
+
+  // POZOZZZZOOOOOOOOOOR!!!!!!!!!!
   // zmenit potom zpet na while, at se to zpatky zkousi pripojit
   if(!mpu.setup(0x68, setting)) { 
     Serial.println("MPU connection failed.");
     digitalWrite(LED_BUILTIN, HIGH); // Turn the LED on (HIGH is the voltage level)
     delay(500); // Wait to try again     
   }
+
+
+
+
+
+
 
   // OLED initalization
   const int I2C1_SDA = 18;
@@ -209,7 +329,9 @@ void setup()
   set_state(fsmOLED, running);
   set_state(fsmSOK, button_off);
   set_state(fsmSERIAL, idle);
+  set_state(fsmSHAKE, shake_idle);
 }
+
 
 // Struct to store IMU readings
 typedef struct {
@@ -220,9 +342,10 @@ typedef struct {
 
 imu_values_t imu;
 
+
+
 void loop() 
 {
-  uint8_t b;
   if (Serial.available()) {  // Only do this if there is serial data to be read
     char c = (char)Serial.read();
     if (c == 'o') {
@@ -236,7 +359,6 @@ void loop()
   } 
 
 
-
   // Do this only every "interval" microseconds 
   uint32_t now = micros();
   uint32_t delta = now - last_cycle; 
@@ -244,10 +366,19 @@ void loop()
     uint32_t cur_time = millis();   // Just one call to millis()
     fsmSOK.tis = cur_time - fsmSOK.tes;
     fsmOLED.tis = cur_time - fsmOLED.tes;
+    fsmSHAKE.tis = cur_time - fsmSHAKE.tes; // update shake FSM time-in-state
 
     loop_micros = micros();
     last_cycle = now;
     cycle_count++;
+
+
+
+
+
+
+
+    /* HANDLING OF SHAKE DETECTION */
 
     // Read, if ready, the MPU
     if (mpu.update()) {
@@ -263,12 +394,85 @@ void loop()
       imu.a.z = mpu.getAccZ();
     }
 
+    // --- horizontal shake detection using fsmSHAKE ---
+    // choose dominant horizontal axis (X or Y)
+    float horiz = (fabsf(imu.a.x) >= fabsf(imu.a.y)) ? imu.a.x : imu.a.y;
+
+    int8_t dir = 0;
+    if (horiz > SHAKE_AXIS_TH) dir = 1;
+    else if (horiz < -SHAKE_AXIS_TH) dir = -1;
+
+    // state machine transitions
+    if (fsmSHAKE.state == shake_idle) {
+      if (dir != 0) {
+        shake_last_dir = dir;
+        shake_cycle_count = 0;
+        shake_window_start_ms = cur_time;
+        set_state(fsmSHAKE, (dir>0) ? shake_saw_pos : shake_saw_neg);
+      }
+    } else if (fsmSHAKE.state == shake_saw_pos || fsmSHAKE.state == shake_saw_neg) {
+      if (dir == 0) {
+        // no peak now; if timeout reset
+        if (cur_time - shake_window_start_ms > SHAKE_WINDOW_MS) {
+          set_state(fsmSHAKE, shake_idle);
+          shake_last_dir = 0;
+          shake_cycle_count = 0;
+          shake_window_start_ms = 0;
+        }
+      } else {
+        // detected a new peak
+        if (dir != shake_last_dir) {
+          // alternation
+          if (cur_time - shake_window_start_ms > SHAKE_WINDOW_MS) {
+            // sequence expired -> restart
+            shake_cycle_count = 1;
+            shake_window_start_ms = cur_time;
+          } else {
+            shake_cycle_count++;
+          }
+          shake_last_dir = dir;
+          // go to corresponding saw state
+          set_state(fsmSHAKE, (dir>0) ? shake_saw_pos : shake_saw_neg);
+        } else {
+          // same direction detected again -> just refresh window
+          shake_window_start_ms = cur_time;
+        }
+      }
+    }
+    // Check trigger (require required alternations)
+    if (shake_cycle_count >= SHAKE_CYCLES_REQ) {
+      // trigger roll when in running states
+      if (fsmOLED.state == running || fsmOLED.state == running_spinning) {
+        set_state(fsmOLED, running_spinning);
+        Serial.printf("DEBUG: horizontal shake detected (cycles=%d)\n", shake_cycle_count);
+      }
+      // reset detector
+      set_state(fsmSHAKE, shake_idle);
+      shake_last_dir = 0;
+      shake_cycle_count = 0;
+      shake_window_start_ms = 0;
+    }
+
+
+
+
+
+
+
+
+
+
     // OLED output clear and setup
     display.clearDisplay();
     display.setTextSize(1);      // Normal 1:1 pixel scale
     display.setTextColor(SSD1306_WHITE); // Draw white text
     display.setCursor(0, 0);     // Start at top-left corner
 
+
+
+
+
+    /* HANDLING OF TRANSITIONS BETWEEN STATES OF STATE MACHINE */
 
     // Read the buttons
     SNEXTprev = SNEXT;
@@ -287,7 +491,7 @@ void loop()
     // Shake done by short press of SOK button or received SOK in Serial
     }else if(((fsmSOK.state == button_on && SOK==LOW && fsmSOK.tis<(long_press_sec*1000)) 
       || fsmSERIAL.state == received_SOK) &&
-      (fsmOLED.state == running || fsmOLED.state == running_spinning)) {
+      (fsmOLED.state == running)){   // || fsmOLED.state == running_spinning
       set_state(fsmOLED, running_spinning);
     // Button pressed in other states    
     }else if((fsmSOK.state == button_off && SOK == HIGH) ||
@@ -373,16 +577,37 @@ void loop()
       }
     }
 
+    const uint16_t period_of_dice_spinning = 50; // ms
+    if(fsmOLED.state == running_spinning){
+      if(fsmOLED.tis%period_of_dice_spinning == 0){
+        for (size_t i = 0; i < number_of_dices; i++){
+          current_dice_values[i] = (rand() % dice_ranges[dice_range_selection]) + 1;
+        }
+      }
+      // after spin_time_sec seconds return to running state
+      if(fsmOLED.tis >= (dice_spin_time_sec * 1000)){
+        set_state(fsmOLED, running);
+      }
+    }
+
     set_state(fsmSERIAL, idle); // reset serial state machine after handling
 
 
 
 
 
+
+
+
+
+
     if(fsmOLED.state == running){
-      display.printf("Running...");
+      //display.printf("Running...");
+      //uint8_t dice_values[4] = {7,8,9,10};
+      drawDices(current_dice_values,number_of_dices);
     }else if(fsmOLED.state == running_spinning){
-      display.printf("Running spinning...");
+      drawDices(current_dice_values,number_of_dices);
+      //display.printf("Running spinning...");
     }else if(fsmOLED.state == menu_imu_calibration){
       display.printf("IMU Calibration\n");
       display.printf("---------------\n");      
@@ -405,7 +630,7 @@ void loop()
     }else if(fsmOLED.state == menu_dice_range_selection){
       display.printf("Select dice range\n");
       display.printf("---------------\n");      
-      display.printf("Range: %d-%d\n", dice_set[tmp_dice_range_selection].min_value, dice_set[tmp_dice_range_selection].max_value);
+      display.printf("Range: %d-%d\n", 1, dice_ranges[tmp_dice_range_selection]);
     }else if(fsmOLED.state == menu_spin_time){
       display.printf("Spin time\n");
       display.printf("---------------\n");      
@@ -457,25 +682,8 @@ void loop()
     
     Serial.print("loop ");
     Serial.print(micros() - now);
-
     Serial.println();
-    
   }
 
 }
 #endif
-
-/*
-#include <Arduino.h>
-
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("Serial OK!");
-  printf("Printf OK!\n");
-}
-
-void loop() {
-  Serial.println("Looping...");
-  delay(1000);
-}*/
