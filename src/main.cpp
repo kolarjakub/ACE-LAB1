@@ -1,3 +1,6 @@
+#define DEBUG 1
+
+#if DEBUG
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -47,10 +50,10 @@ uint32_t cycle_count;
 #define SESC_BUTTON 4
 
 // button states
-bool SOK, SOKprev;
-bool SNEXT, SNEXTprev;
-bool SESC, SESCprev;
-uint8_t long_press_sec = 2;
+bool SOK;
+bool SNEXT,SNEXTprev;
+bool SESC,SESCprev;
+const uint8_t long_press_sec = 2;
 
 
 void set_interval(float new_interval)
@@ -65,23 +68,14 @@ typedef struct {
   unsigned long tes, tis;
 } fsm_t;
 
-fsm_t fsmOLED,fsmSOK;
+fsm_t fsmOLED,fsmSOK,fsmSERIAL;
 
-// enum of states for OLED
-/*enum {
-  oled_running,
-  oled_menu,
-  oled_menu_calibrate_IMU,
-  oled_menu_dice_range,
-  oled_menu_dice_counter,
-  oled_menu_dice_spin_time
-};*/
-
-
+// OLED state machine states
 enum{
 	running,
+  running_spinning,
 	menu_imu_calibration,
-  calibrating,
+//  calibrating,
 	menu_number_of_dices,
 	menu_number_of_dices_selection,
 	menu_dice_range,
@@ -89,6 +83,21 @@ enum{
 	menu_spin_time,
 	menu_spin_time_selection	
 };
+
+// enum of states for buttons
+enum {
+  button_off,
+  button_on
+};
+
+// enum of states for Serial
+enum {
+  idle,
+  received_SOK,
+  received_SNEXT,
+  received_SESC
+};
+
 
 struct dice_range{
   uint8_t min_value;
@@ -111,17 +120,12 @@ uint8_t tmp_number_of_dices; // tmp variable for selection in menu
 uint8_t dice_spin_time_sec = SPIN_TIME_MIN; // default 3 seconds
 uint8_t tmp_dice_spin_time_sec; // default 3 seconds
 
-// enum of states for buttons
-enum {
-  button_off,
-  button_on
-};
 
 
 // Set new state
 void set_state(fsm_t& fsm, int new_state)
 {
-  if (fsm.state != new_state) {  // if the state chnanged tis is reset
+  if (fsm.state != new_state) {  // if the state chnaged tis is reset
     fsm.state = new_state;
     fsm.tes = millis();
     fsm.tis = 0;
@@ -136,6 +140,13 @@ void setup()
 
   Serial.begin(115200);
 
+  while (!Serial) {
+    delay(10); // wait for serial port to connect. Needed for native USB
+  }
+
+  delay(1000); // malá pauza po resetu
+  Serial.println("Hello from Raspberry Pi Pico!");
+
   // Our cycle time
   set_interval(20e-3); // 20 ms -> 50 Hz
 
@@ -144,7 +155,6 @@ void setup()
   const int I2C0_SCL = 21;
   pinMode(I2C0_SDA, INPUT_PULLUP);
   pinMode(I2C0_SCL, INPUT_PULLUP);
-  
   Wire.setSDA(I2C0_SDA);
   Wire.setSCL(I2C0_SCL);
   Wire.begin();
@@ -160,14 +170,18 @@ void setup()
   setting.accel_fchoice = 0x01;
   setting.accel_dlpf_cfg = ACCEL_DLPF_CFG::DLPF_45HZ;
   
-  while (!mpu.setup(0x68, setting)) { 
+  // zmenit potom zpet na while, at se to zpatky zkousi pripojit
+  if(!mpu.setup(0x68, setting)) { 
     Serial.println("MPU connection failed.");
+    digitalWrite(LED_BUILTIN, HIGH); // Turn the LED on (HIGH is the voltage level)
     delay(500); // Wait to try again     
   }
 
   // OLED initalization
   const int I2C1_SDA = 18;
   const int I2C1_SCL = 19;
+  pinMode(I2C1_SDA, INPUT_PULLUP);
+  pinMode(I2C1_SCL, INPUT_PULLUP);
   Wire1.setSDA(I2C1_SDA);
   Wire1.setSCL(I2C1_SCL);
   Wire1.begin();
@@ -188,18 +202,13 @@ void setup()
 
   // Configure buttons (use internal pull-ups; buttons -> GND)
   pinMode(SOK_BUTTON, INPUT_PULLUP);
+  pinMode(SNEXT_BUTTON, INPUT_PULLUP);
+  pinMode(SESC_BUTTON, INPUT_PULLUP);
   
-  // Initialize stable states
-  SOK = (digitalRead(SOK_BUTTON));
-  SNEXT = (digitalRead(SNEXT_BUTTON) == LOW);
-  SESC = (digitalRead(SESC_BUTTON) == LOW);
-  SOKprev = SOK;
-  SNEXTprev = SNEXT;
-  SESCprev = SESC;
-
   // Set state machines to initial states
   set_state(fsmOLED, running);
   set_state(fsmSOK, button_off);
+  set_state(fsmSERIAL, idle);
 }
 
 // Struct to store IMU readings
@@ -215,15 +224,27 @@ void loop()
 {
   uint8_t b;
   if (Serial.available()) {  // Only do this if there is serial data to be read
-  
-    b = Serial.read();    
-    //Serial.write(b);
+    char c = (char)Serial.read();
+    if (c == 'o') {
+      set_state(fsmSERIAL, received_SOK);
+    } else if (c == 'n') {
+      set_state(fsmSERIAL, received_SNEXT);
+    } else if (c == 'e') {
+      set_state(fsmSERIAL, received_SESC);
+    }
+    // ignore other characters
   } 
+
+
 
   // Do this only every "interval" microseconds 
   uint32_t now = micros();
   uint32_t delta = now - last_cycle; 
   if (delta >= interval) {
+    uint32_t cur_time = millis();   // Just one call to millis()
+    fsmSOK.tis = cur_time - fsmSOK.tes;
+    fsmOLED.tis = cur_time - fsmOLED.tes;
+
     loop_micros = micros();
     last_cycle = now;
     cycle_count++;
@@ -242,8 +263,14 @@ void loop()
       imu.a.z = mpu.getAccZ();
     }
 
+    // OLED output clear and setup
+    display.clearDisplay();
+    display.setTextSize(1);      // Normal 1:1 pixel scale
+    display.setTextColor(SSD1306_WHITE); // Draw white text
+    display.setCursor(0, 0);     // Start at top-left corner
+
+
     // Read the buttons
-    SOKprev = SOK;
     SNEXTprev = SNEXT;
     SESCprev = SESC;
 
@@ -251,29 +278,29 @@ void loop()
     SNEXT = !digitalRead(SNEXT_BUTTON);
     SESC = !digitalRead(SESC_BUTTON);
 
-
-    // SOK button handiling
-    if(fsmSOK.state == button_off) {
-      if(SOK == LOW && SOKprev == HIGH) { // Button pressed
-        set_state(fsmSOK, button_on);
-      }
-    } else if(fsmSOK.state == button_on) {
-      if(SOK == HIGH && SOKprev == LOW) { // Button released
-        set_state(fsmSOK, button_off);
-      }
-    }
-
-
     // State machine for SOK button -> setting states of fsmOLED
-    if(fsmSOK.state == button_on && (fsmSOK.tis-fsmSOK.tes>long_press_sec*1000)) {
-      if(fsmOLED.state == running){
-        set_state(fsmOLED, menu_imu_calibration);
-      }
-    }else if(fsmSOK.state == button_off && fsmSOK.new_state == button_on) {
+    // Long press handling for IMU calibration
+    if(fsmSOK.state == button_on && 
+      (fsmSOK.tis>=(long_press_sec*1000)) &&  
+      (fsmOLED.state == running || fsmOLED.state == running_spinning)) {
+      set_state(fsmOLED, menu_imu_calibration);
+    // Shake done by short press of SOK button or received SOK in Serial
+    }else if(((fsmSOK.state == button_on && SOK==LOW && fsmSOK.tis<(long_press_sec*1000)) 
+      || fsmSERIAL.state == received_SOK) &&
+      (fsmOLED.state == running || fsmOLED.state == running_spinning)) {
+      set_state(fsmOLED, running_spinning);
+    // Button pressed in other states    
+    }else if((fsmSOK.state == button_off && SOK == HIGH) ||
+      fsmSERIAL.state == received_SOK) {
       // Approval (short press) handling for all menu states:
       if (fsmOLED.state == menu_imu_calibration) {
         // approve IMU calibration (start calibration or confirm)
-        set_state(fsmOLED, calibrating);
+        display.printf("Calibrating IMU...\nHOLD STILL PLEASE");
+        display.display();
+        mpu.verbose(true);
+        mpu.calibrateAccelGyro();
+        mpu.verbose(false);
+        set_state(fsmOLED, menu_imu_calibration);
       } else if (fsmOLED.state == menu_number_of_dices) {
         // enter selection for number of dices
         tmp_number_of_dices = number_of_dices; // load current value to tmp variable
@@ -301,8 +328,16 @@ void loop()
       }
     }
 
+    // SOK button handiling
+    if(fsmSOK.state == button_off && SOK == HIGH) {
+      set_state(fsmSOK, button_on);
+    } else if(fsmSOK.state == button_on && SOK == LOW) {
+      set_state(fsmSOK, button_off);
+    }
+
+
     // SNEXT button handling
-    if(SNEXT == LOW && SNEXTprev == HIGH) {
+    if((SNEXT == HIGH && SNEXTprev == LOW)|| fsmSERIAL.state == received_SNEXT) {
       // if state is oled_menu change to next option
       if(fsmOLED.state == menu_imu_calibration){
         set_state(fsmOLED, menu_number_of_dices);
@@ -312,7 +347,6 @@ void loop()
         set_state(fsmOLED, menu_spin_time);
       }else if(fsmOLED.state == menu_spin_time){
         set_state(fsmOLED, menu_imu_calibration);
-
       }else if(fsmOLED.state == menu_number_of_dices_selection){
         tmp_number_of_dices++;
         if(tmp_number_of_dices>4) tmp_number_of_dices=1; // wrap around
@@ -327,7 +361,7 @@ void loop()
   
 
     // SESC button handling
-    if (SESC == LOW && SESCprev == HIGH) {
+    if ((SESC == HIGH && SESCprev == LOW)|| fsmSERIAL.state == received_SESC) {
       if (fsmOLED.state == menu_imu_calibration ||
           fsmOLED.state == menu_number_of_dices ||
           fsmOLED.state == menu_number_of_dices_selection ||
@@ -339,18 +373,53 @@ void loop()
       }
     }
 
-    uint32_t cur_time = millis();   // Just one call to millis()
-    fsmSOK.tis = cur_time - fsmSOK.tes;
-    fsmOLED.tis = cur_time - fsmOLED.tes;
+    set_state(fsmSERIAL, idle); // reset serial state machine after handling
 
 
 
 
 
-    
+    if(fsmOLED.state == running){
+      display.printf("Running...");
+    }else if(fsmOLED.state == running_spinning){
+      display.printf("Running spinning...");
+    }else if(fsmOLED.state == menu_imu_calibration){
+      display.printf("IMU Calibration\n");
+      display.printf("---------------\n");      
+      display.printf("Press OK to start calibration...\n");
+    /*}else if(fsmOLED.state == calibrating){
+      display.printf("Calibrating IMU...\n");
+      //display.printf("---------------\n");*/      
+    }else if(fsmOLED.state == menu_number_of_dices){
+      display.printf("Number of dices\n");
+      display.printf("---------------\n");      
+      display.printf("Press OK to select...\n");
+    }else if(fsmOLED.state == menu_number_of_dices_selection){
+      display.printf("Select number of dices\n");
+      display.printf("---------------\n");      
+      display.printf("Dices: %d\n", tmp_number_of_dices);
+    }else if(fsmOLED.state == menu_dice_range){
+      display.printf("Dice range\n");
+      display.printf("---------------\n");      
+      display.printf("Press OK to select...\n");
+    }else if(fsmOLED.state == menu_dice_range_selection){
+      display.printf("Select dice range\n");
+      display.printf("---------------\n");      
+      display.printf("Range: %d-%d\n", dice_set[tmp_dice_range_selection].min_value, dice_set[tmp_dice_range_selection].max_value);
+    }else if(fsmOLED.state == menu_spin_time){
+      display.printf("Spin time\n");
+      display.printf("---------------\n");      
+      display.printf("Press OK to select...\n");
+    }else if(fsmOLED.state == menu_spin_time_selection){
+      display.printf("Select spin time\n");
+      display.printf("---------------\n");      
+      display.printf("Spin time: %d s\n", tmp_dice_spin_time_sec);
+    }
 
-    // OLED output
-    display.clearDisplay();
+
+
+
+    /*
 
     display.setTextSize(1);      // Normal 1:1 pixel scale
     display.setTextColor(SSD1306_WHITE); // Draw white text
@@ -366,9 +435,12 @@ void loop()
     display.printf("Ay %.2f", imu.a.y);
     display.setCursor(64, 16);
     display.printf("Az %.2f", imu.a.z);
+    */
+    
+
 
     display.display();
-
+    
     // Serial output
     Serial.printf("IMU_dt %d; ", imu.cycle_time - imu.last_cycle_time);
 
@@ -382,11 +454,28 @@ void loop()
 
     //Serial.print("T ");
     //Serial.print(mpu.getTemperature(), 2);
-
+    
     Serial.print("loop ");
     Serial.print(micros() - now);
 
     Serial.println();
+    
   }
 
 }
+#endif
+
+/*
+#include <Arduino.h>
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("Serial OK!");
+  printf("Printf OK!\n");
+}
+
+void loop() {
+  Serial.println("Looping...");
+  delay(1000);
+}*/
