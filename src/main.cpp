@@ -1,3 +1,6 @@
+// board H
+
+
 #define DEBUG 1
 
 #if DEBUG
@@ -49,7 +52,9 @@ const uint8_t dot_size=1;
 void drawDices(uint8_t dice_values[], uint8_t num_dices){
   if(num_dices >4) num_dices =4; // max 4 dices supported currently
   if(num_dices <1) num_dices =1;
+
   for (size_t i = 0; i < num_dices; i++){  
+
     display.drawRoundRect(i*SCREEN_WIDTH/4, 0, (SCREEN_WIDTH/4-1), (SCREEN_WIDTH/4-1), 3, SSD1306_WHITE);
     switch(dice_values[i]){
       case 1:
@@ -127,8 +132,52 @@ void drawDices(uint8_t dice_values[], uint8_t num_dices){
         display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),4*(SCREEN_WIDTH/20)-4, dot_size, SSD1306_WHITE);
         display.fillCircle(i*SCREEN_WIDTH/4 + (SCREEN_WIDTH/8),(SCREEN_WIDTH/4-5), dot_size, SSD1306_WHITE);
         break;
+      case 11: case 12: case 13: case 14: case 15: case 16: case 17: case 18: case 19: case 20: {
+        // draw 1..20 dots arranged in a 4x5 grid inside the die box
+        int v = dice_values[i];
+        if (v < 1) v = 1;
+        if (v > 20) v = 20;
+
+        // box geometry (same as used above)
+        int boxX = i * (SCREEN_WIDTH/4);
+        int boxW = (SCREEN_WIDTH/4 - 1);
+        int boxY = 0;
+        int s = boxW;
+
+        // margin so dots are not glued to edges
+        int m = max(4, s / 8);
+
+        const int COLS = 4;
+        const int ROWS = 5;
+        int usableW = s - 2*m;
+        int usableH = s - 2*m;
+
+        int posX[COLS];
+        int posY[ROWS];
+        for (int c = 0; c < COLS; ++c) {
+          posX[c] = boxX + m + (c * usableW) / (COLS - 1);
+        }
+        for (int r = 0; r < ROWS; ++r) {
+          posY[r] = boxY + m + (r * usableH) / (ROWS - 1);
+        }
+
+        // pleasing draw order (center-first, then expanding symmetrically)
+        const uint8_t order[20] = {
+          9, 10, 5, 6, 13, 14, 4, 7, 12, 15,
+          1, 2, 17, 18, 0, 3, 16, 19, 8, 11
+        };
+        // order values are indices = r*4 + c
+
+        for (int k = 0; k < v; ++k) {
+          int idx = order[k];
+          int r = idx / COLS;
+          int c = idx % COLS;
+          display.fillCircle(posX[c], posY[r], 1, SSD1306_WHITE);
+        }
+        break;
       }
-    display.setCursor((2*i+1)*(SCREEN_WIDTH/8)-5,SCREEN_WIDTH/4+3);     // Start at top-left corner
+    }
+    display.setCursor((2*i+1)*(SCREEN_WIDTH/8)-5,SCREEN_WIDTH/4+3);
     display.printf("%d",dice_values[i]);
   }
 }
@@ -165,7 +214,7 @@ typedef struct {
   unsigned long tes, tis;
 } fsm_t;
 
-fsm_t fsmOLED,fsmSOK,fsmSERIAL;
+fsm_t fsmOLED,fsmSOK,fsmSERIAL, fsmSPIN;
 
 // --- shake FSM and parameters (added) ---
 fsm_t fsmSHAKE;
@@ -176,9 +225,9 @@ enum {
   shake_saw_neg,
 };
 
-const float SHAKE_AXIS_TH = 0.6f;       // threshold [g] for a horizontal peak
+const float SHAKE_AXIS_TH = 0.3f;       // threshold [g] for a horizontal peak
 const uint8_t SHAKE_CYCLES_REQ = 3;    // required alternations (>3 cycles means >=3 alternations)
-const uint32_t SHAKE_WINDOW_MS = 800;  // time window to count cycles
+const uint32_t SHAKE_WINDOW_MS = 1200;  // time window to count cycles
 
 int8_t shake_last_dir = 0;    // -1, 0, +1 (keeps last detected direction)
 uint8_t shake_cycle_count = 0; // number of alternations counted
@@ -211,6 +260,12 @@ enum {
   received_SESC
 };
 
+// enum for states of spinning the dice
+enum{
+  ready_to_spin,
+  spinned_up
+};
+
 
 const uint8_t dice_ranges[4] = {4, 6, 10, 20};
 uint8_t dice_range_selection = 1; // deafult option is 1-6 - index to array dice_set
@@ -218,11 +273,13 @@ uint8_t tmp_dice_range_selection; // tmp variable for selection in menu
 uint8_t number_of_dices = 1; // deafult option is 1
 uint8_t tmp_number_of_dices; // tmp variable for selection in menu
 uint8_t current_dice_values[4] = {0,0,0,0};
+uint32_t sum_of_values_throwing_1_dice = 0;
+uint8_t throws_with_1_dice = 0;
 
 #define SPIN_TIME_MIN 2
 #define SPIN_TIME_MAX 10
-uint8_t dice_spin_time_sec = SPIN_TIME_MIN; // default 3 seconds
-uint8_t tmp_dice_spin_time_sec; // default 3 seconds
+uint8_t dice_spin_time_sec = SPIN_TIME_MIN; // default 2 seconds
+uint8_t tmp_dice_spin_time_sec=SPIN_TIME_MIN; // default 2 seconds
 
 
 
@@ -330,6 +387,7 @@ void setup()
   set_state(fsmSOK, button_off);
   set_state(fsmSERIAL, idle);
   set_state(fsmSHAKE, shake_idle);
+  set_state(fsmSPIN, spinned_up);
 }
 
 
@@ -367,6 +425,7 @@ void loop()
     fsmSOK.tis = cur_time - fsmSOK.tes;
     fsmOLED.tis = cur_time - fsmOLED.tes;
     fsmSHAKE.tis = cur_time - fsmSHAKE.tes; // update shake FSM time-in-state
+    fsmSPIN.tis = cur_time - fsmSPIN.tes; // update shake FSM time-in-state
 
     loop_micros = micros();
     last_cycle = now;
@@ -442,7 +501,7 @@ void loop()
     // Check trigger (require required alternations)
     if (shake_cycle_count >= SHAKE_CYCLES_REQ) {
       // trigger roll when in running states
-      if (fsmOLED.state == running || fsmOLED.state == running_spinning) {
+      if (fsmOLED.state == running) { //  || fsmOLED.state == running_spinning
         set_state(fsmOLED, running_spinning);
         Serial.printf("DEBUG: horizontal shake detected (cycles=%d)\n", shake_cycle_count);
       }
@@ -452,9 +511,6 @@ void loop()
       shake_cycle_count = 0;
       shake_window_start_ms = 0;
     }
-
-
-
 
 
 
@@ -512,12 +568,22 @@ void loop()
       } else if (fsmOLED.state == menu_number_of_dices_selection) {
         // confirm selected number_of_dices (apply selection)
         number_of_dices = tmp_number_of_dices;
+        if(number_of_dices >1){
+          // reset statistics for 1 dice throws
+          sum_of_values_throwing_1_dice = 0;
+          throws_with_1_dice = 0;
+        }
         set_state(fsmOLED, menu_number_of_dices);
       } else if (fsmOLED.state == menu_dice_range) {
         // enter dice range selection
         tmp_dice_range_selection = dice_range_selection; // load current value to tmp variable
         set_state(fsmOLED, menu_dice_range_selection);
       } else if (fsmOLED.state == menu_dice_range_selection) {
+        if(dice_range_selection != tmp_dice_range_selection){
+          // reset statistics for 1 dice throws
+          sum_of_values_throwing_1_dice = 0;
+          throws_with_1_dice = 0;
+        }
         // confirm selected dice range (apply selection)
         dice_range_selection = tmp_dice_range_selection;
         set_state(fsmOLED, menu_dice_range);
@@ -566,7 +632,9 @@ void loop()
 
     // SESC button handling
     if ((SESC == HIGH && SESCprev == LOW)|| fsmSERIAL.state == received_SESC) {
-      if (fsmOLED.state == menu_imu_calibration ||
+      if (fsmOLED.state == running ||
+          fsmOLED.state == running_spinning ||
+          fsmOLED.state == menu_imu_calibration ||
           fsmOLED.state == menu_number_of_dices ||
           fsmOLED.state == menu_number_of_dices_selection ||
           fsmOLED.state == menu_dice_range ||
@@ -574,19 +642,7 @@ void loop()
           fsmOLED.state == menu_spin_time ||
           fsmOLED.state == menu_spin_time_selection) {
         set_state(fsmOLED, running);
-      }
-    }
-
-    const uint16_t period_of_dice_spinning = 50; // ms
-    if(fsmOLED.state == running_spinning){
-      if(fsmOLED.tis%period_of_dice_spinning == 0){
-        for (size_t i = 0; i < number_of_dices; i++){
-          current_dice_values[i] = (rand() % dice_ranges[dice_range_selection]) + 1;
-        }
-      }
-      // after spin_time_sec seconds return to running state
-      if(fsmOLED.tis >= (dice_spin_time_sec * 1000)){
-        set_state(fsmOLED, running);
+        memset(current_dice_values, 0, sizeof(current_dice_values));
       }
     }
 
@@ -595,50 +651,103 @@ void loop()
 
 
 
+    const uint16_t period_of_dice_spinning = 100; // ms
+    if(fsmOLED.state == running_spinning){
+      if(fsmSPIN.state == spinned_up && fsmSPIN.tis >= period_of_dice_spinning){
+        // entered spinning state
+        set_state(fsmSPIN, ready_to_spin);
+      }else if(fsmSPIN.state == ready_to_spin){
+        // generate new random dice values
+        for (size_t i = 0; i < number_of_dices; i++){
+          current_dice_values[i] = (rand() % dice_ranges[dice_range_selection]) + 1;
+          printf("DEBUG: dice %d value: %d\n", i+1, current_dice_values[i]);
+        }
+        set_state(fsmSPIN, spinned_up);
+      }
+      
+      // after spin_time_sec seconds return to running state
+      if(fsmOLED.tis >= (dice_spin_time_sec * 1000)){
+        set_state(fsmOLED, running);
+        if(number_of_dices == 1){
+          sum_of_values_throwing_1_dice += current_dice_values[0];
+          throws_with_1_dice++;
+          Serial.printf("STATISTIC: Throw with 1 dice: value=%d; total_throws=%d; sum_of_values=%d; average=%.2f\n",
+            current_dice_values[0],
+            throws_with_1_dice,
+            sum_of_values_throwing_1_dice,
+            (float)sum_of_values_throwing_1_dice / (float)throws_with_1_dice
+          );
+        }
+      }
+
+    }
+    
+    
 
 
 
 
+
+
+    display.clearDisplay();
+    display.setTextSize(1);      // Normal 1:1 pixel scale
+    display.setTextColor(SSD1306_WHITE); // Draw white text
+    display.setCursor(0, 0);     // Start at top-left corner
 
 
     if(fsmOLED.state == running){
       //display.printf("Running...");
       //uint8_t dice_values[4] = {7,8,9,10};
       drawDices(current_dice_values,number_of_dices);
+      if(number_of_dices == 1){
+        display.setCursor(0, SCREEN_WIDTH/4+20);     // Start at top-left corner
+        float avg=(float)sum_of_values_throwing_1_dice / (float)throws_with_1_dice;
+        if(throws_with_1_dice>0) display.printf("AVG 1 dice: %0.2f\n",avg);
+      }
+
     }else if(fsmOLED.state == running_spinning){
       drawDices(current_dice_values,number_of_dices);
+      printf("displaying spinning...\n");      
+
       //display.printf("Running spinning...");
     }else if(fsmOLED.state == menu_imu_calibration){
       display.printf("IMU Calibration\n");
       display.printf("---------------\n");      
-      display.printf("Press OK to start calibration...\n");
+      display.printf("Press OK to start calibration\n");
     /*}else if(fsmOLED.state == calibrating){
       display.printf("Calibrating IMU...\n");
       //display.printf("---------------\n");*/      
     }else if(fsmOLED.state == menu_number_of_dices){
       display.printf("Number of dices\n");
       display.printf("---------------\n");      
-      display.printf("Press OK to select...\n");
+      display.printf("Press OK to select\n");
     }else if(fsmOLED.state == menu_number_of_dices_selection){
       display.printf("Select number of dices\n");
       display.printf("---------------\n");      
-      display.printf("Dices: %d\n", tmp_number_of_dices);
+      display.printf("DICES: %d\n", tmp_number_of_dices);
+      display.printf("---------------\n");      
+      display.printf("Press OK to confirm\n");
     }else if(fsmOLED.state == menu_dice_range){
       display.printf("Dice range\n");
       display.printf("---------------\n");      
-      display.printf("Press OK to select...\n");
+      display.printf("Press OK to select\n");
     }else if(fsmOLED.state == menu_dice_range_selection){
       display.printf("Select dice range\n");
       display.printf("---------------\n");      
-      display.printf("Range: %d-%d\n", 1, dice_ranges[tmp_dice_range_selection]);
+      display.printf("RANGE: %d-%d\n", 1, dice_ranges[tmp_dice_range_selection]);
+      display.printf("---------------\n");      
+      display.printf("Press OK to confirm\n");
     }else if(fsmOLED.state == menu_spin_time){
       display.printf("Spin time\n");
       display.printf("---------------\n");      
-      display.printf("Press OK to select...\n");
+      display.printf("Press OK to select\n");
     }else if(fsmOLED.state == menu_spin_time_selection){
       display.printf("Select spin time\n");
       display.printf("---------------\n");      
-      display.printf("Spin time: %d s\n", tmp_dice_spin_time_sec);
+      display.printf("SPIN TIME: %d s\n", tmp_dice_spin_time_sec);
+      display.printf("---------------\n");      
+      display.printf("Press OK to confirm\n");
+
     }
 
 
@@ -666,6 +775,7 @@ void loop()
 
     display.display();
     
+    /*
     // Serial output
     Serial.printf("IMU_dt %d; ", imu.cycle_time - imu.last_cycle_time);
 
@@ -680,9 +790,12 @@ void loop()
     //Serial.print("T ");
     //Serial.print(mpu.getTemperature(), 2);
     
+    
+    
     Serial.print("loop ");
     Serial.print(micros() - now);
     Serial.println();
+    */
   }
 
 }
