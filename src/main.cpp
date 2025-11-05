@@ -308,7 +308,6 @@ void setup()
   }
 
   delay(1000); // malá pauza po resetu
-  Serial.println("Hello from Raspberry Pi Pico!");
 
   // Our cycle time
   set_interval(20e-3); // 20 ms -> 50 Hz
