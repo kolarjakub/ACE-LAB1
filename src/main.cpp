@@ -1,9 +1,5 @@
 // board H
 
-
-#define DEBUG 1
-
-#if DEBUG
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -237,13 +233,12 @@ enum{
 	running,
   running_spinning,
 	menu_imu_calibration,
-//  calibrating,
 	menu_number_of_dices,
 	menu_number_of_dices_selection,
 	menu_dice_range,
 	menu_dice_range_selection,
 	menu_spin_time,
-	menu_spin_time_selection	
+	menu_spin_time_selection
 };
 
 // enum of states for buttons
@@ -283,10 +278,31 @@ uint8_t tmp_dice_spin_time_sec=SPIN_TIME_MIN; // default 2 seconds
 
 
 
-// Set new state
+// Helper function to convert state to string
+const char* fsmOLEDStateName(int state) {
+  switch(state) {
+    case running: return "running";
+    case running_spinning: return "running_spinning";
+    case menu_imu_calibration: return "menu_imu_calibration";
+    case menu_number_of_dices: return "menu_number_of_dices";
+    case menu_number_of_dices_selection: return "menu_number_of_dices_selection";
+    case menu_dice_range: return "menu_dice_range";
+    case menu_dice_range_selection: return "menu_dice_range_selection";
+    case menu_spin_time: return "menu_spin_time";
+    case menu_spin_time_selection: return "menu_spin_time_selection";
+    default: return "unknown";
+  }
+}
+
+// Modify set_state to include debug print
 void set_state(fsm_t& fsm, int new_state)
 {
-  if (fsm.state != new_state) {  // if the state chnaged tis is reset
+  if (fsm.state != new_state) {  // if the state changed tis is reset
+    if (&fsm == &fsmOLED) {
+      Serial.printf("fsmOLED state change: %s -> %s\n", 
+        fsmOLEDStateName(fsm.state), 
+        fsmOLEDStateName(new_state));
+    }
     fsm.state = new_state;
     fsm.tes = millis();
     fsm.tis = 0;
@@ -331,26 +347,13 @@ void setup()
   setting.gyro_dlpf_cfg = GYRO_DLPF_CFG::DLPF_41HZ;
   setting.accel_fchoice = 0x01;
   setting.accel_dlpf_cfg = ACCEL_DLPF_CFG::DLPF_45HZ;
-  
 
 
-
-
-
-
-
-  // POZOZZZZOOOOOOOOOOR!!!!!!!!!!
-  // zmenit potom zpet na while, at se to zpatky zkousi pripojit
-  if(!mpu.setup(0x68, setting)) { 
+  while(!mpu.setup(0x68, setting)) {
     Serial.println("MPU connection failed.");
     digitalWrite(LED_BUILTIN, HIGH); // Turn the LED on (HIGH is the voltage level)
     delay(500); // Wait to try again     
   }
-
-
-
-
-
 
 
   // OLED initalization
@@ -407,10 +410,13 @@ void loop()
     char c = (char)Serial.read();
     if (c == 'o') {
       set_state(fsmSERIAL, received_SOK);
+      Serial.println("Serial: received SOK ('o')");
     } else if (c == 'n') {
-      set_state(fsmSERIAL, received_SNEXT);
+      set_state(fsmSERIAL, received_SNEXT); 
+      Serial.println("Serial: received SNEXT ('n')");
     } else if (c == 'e') {
       set_state(fsmSERIAL, received_SESC);
+      Serial.println("Serial: received SESC ('e')");
     }
     // ignore other characters
   } 
@@ -429,11 +435,6 @@ void loop()
     loop_micros = micros();
     last_cycle = now;
     cycle_count++;
-
-
-
-
-
 
 
     /* HANDLING OF SHAKE DETECTION */
@@ -542,23 +543,28 @@ void loop()
     if(fsmSOK.state == button_on && 
       (fsmSOK.tis>=(long_press_sec*1000)) &&  
       (fsmOLED.state == running || fsmOLED.state == running_spinning)) {
+      Serial.printf("Long press of SOK detected\n");
       set_state(fsmOLED, menu_imu_calibration);
     // Shake done by short press of SOK button or received SOK in Serial
     }else if(((fsmSOK.state == button_on && SOK==LOW && fsmSOK.tis<(long_press_sec*1000)) 
       || fsmSERIAL.state == received_SOK) &&
       (fsmOLED.state == running)){   // || fsmOLED.state == running_spinning
       set_state(fsmOLED, running_spinning);
-    // Button pressed in other states    
+      Serial.printf("Short press of SOK detected\n");
+      // Button pressed in other states    
     }else if((fsmSOK.state == button_off && SOK == HIGH) ||
       fsmSERIAL.state == received_SOK) {
-      // Approval (short press) handling for all menu states:
+      Serial.printf("Press of SOK detected\n");
+        // Approval (short press) handling for all menu states:
       if (fsmOLED.state == menu_imu_calibration) {
         // approve IMU calibration (start calibration or confirm)
         display.printf("Calibrating IMU...\nHOLD STILL PLEASE");
+        Serial.printf("Calibrating IMU...\nHOLD STILL PLEASE");
         display.display();
         mpu.verbose(true);
         mpu.calibrateAccelGyro();
         mpu.verbose(false);
+        Serial.printf("Calibration finshed...\n");
         set_state(fsmOLED, menu_imu_calibration);
       } else if (fsmOLED.state == menu_number_of_dices) {
         // enter selection for number of dices
@@ -600,6 +606,7 @@ void loop()
     // SOK button handiling
     if(fsmSOK.state == button_off && SOK == HIGH) {
       set_state(fsmSOK, button_on);
+
     } else if(fsmSOK.state == button_on && SOK == LOW) {
       set_state(fsmSOK, button_off);
     }
@@ -607,6 +614,7 @@ void loop()
 
     // SNEXT button handling
     if((SNEXT == HIGH && SNEXTprev == LOW)|| fsmSERIAL.state == received_SNEXT) {
+      Serial.printf("Press of SNEXT detected\n");
       // if state is oled_menu change to next option
       if(fsmOLED.state == menu_imu_calibration){
         set_state(fsmOLED, menu_number_of_dices);
@@ -631,6 +639,7 @@ void loop()
 
     // SESC button handling
     if ((SESC == HIGH && SESCprev == LOW)|| fsmSERIAL.state == received_SESC) {
+      Serial.printf("Press of SESC detected\n");
       if (fsmOLED.state == running ||
           fsmOLED.state == running_spinning ||
           fsmOLED.state == menu_imu_calibration ||
@@ -685,9 +694,6 @@ void loop()
 
 
 
-
-
-
     display.clearDisplay();
     display.setTextSize(1);      // Normal 1:1 pixel scale
     display.setTextColor(SSD1306_WHITE); // Draw white text
@@ -706,16 +712,12 @@ void loop()
 
     }else if(fsmOLED.state == running_spinning){
       drawDices(current_dice_values,number_of_dices);
-      printf("displaying spinning...\n");      
-
+      printf("displaying spinning...\n");
       //display.printf("Running spinning...");
     }else if(fsmOLED.state == menu_imu_calibration){
       display.printf("IMU Calibration\n");
       display.printf("---------------\n");      
       display.printf("Press OK to start calibration\n");
-    /*}else if(fsmOLED.state == calibrating){
-      display.printf("Calibrating IMU...\n");
-      //display.printf("---------------\n");*/      
     }else if(fsmOLED.state == menu_number_of_dices){
       display.printf("Number of dices\n");
       display.printf("---------------\n");      
@@ -751,51 +753,8 @@ void loop()
 
 
 
-
-    /*
-
-    display.setTextSize(1);      // Normal 1:1 pixel scale
-    display.setTextColor(SSD1306_WHITE); // Draw white text
-    display.setCursor(0, 0);     // Start at top-left corner
-    
-    display.printf("Wx %.2f\n", imu.w.x);
-    display.printf("Wy %.2f\n", imu.w.y);
-    display.printf("Wz %.2f\n", imu.w.z);
-
-    display.setCursor(64, 0);     // Start at top-left corner
-    display.printf("Ax %.2f", imu.a.x);
-    display.setCursor(64, 8);
-    display.printf("Ay %.2f", imu.a.y);
-    display.setCursor(64, 16);
-    display.printf("Az %.2f", imu.a.z);
-    */
-    
-
-
     display.display();
-    
-    /*
-    // Serial output
-    Serial.printf("IMU_dt %d; ", imu.cycle_time - imu.last_cycle_time);
-
-    Serial.printf("Wx %.2f; ", imu.w.x);
-    Serial.printf("Wy %.2f; ", imu.w.y);
-    Serial.printf("Wz %.2f; ", imu.w.z);
-
-    Serial.printf("Ax %.2f; ", imu.a.x);
-    Serial.printf("Ay %.2f; ", imu.a.y);
-    Serial.printf("Az %.2f; ", imu.a.z);
-
-    //Serial.print("T ");
-    //Serial.print(mpu.getTemperature(), 2);
-    
-    
-    
-    Serial.print("loop ");
-    Serial.print(micros() - now);
-    Serial.println();
-    */
+  
   }
 
 }
-#endif
